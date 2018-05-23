@@ -1,0 +1,719 @@
+---
+title: "UltimatumAnalysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+TO DO 
+Define hypotheses / Describe variables
+- Identify your model (outcome, likelihood function, predictors)
+- Identify submodels for comparison
+Define and motivate your priors 
+- (predictive prior distribution?)
+Assess model quality
+- WAIC comparison
+- Estimate comparison
+- Predictive posterior
+Report results
+- Estimates and estimate interpretation
+- Make sure to deal cautiously with interactions (e.g. plot!)
+Compare current state of knowledge with previous
+- E.g. prior vs. Posterior estimates
+
+
+
+## Loading data, cleaning, and scaling relevant variables 
+```{r cars}
+library(pacman)
+p_load(tidyverse, rethinking, pastecs, patchwork, Brobdingnag)
+
+setwd("C:/Users/kilda/OneDrive/Documents/R")
+library(pacman)
+p_load(rethinking, pastecs, Brobdingnag)
+library(tidyverse)
+
+
+# loading data 
+d1 = read.csv("U1.csv")
+d2 = read.csv("U2.csv")
+d3 = read.csv("U3.csv")
+d4 = read.csv("U4.csv")
+d5 = read.csv("U5.csv")
+d6 = read.csv("U6.csv")
+d7 = read.csv("U7.csv")
+d8 = read.csv("U8.csv")
+d9 = read.csv("U9.csv")
+d10 = read.csv("U10.csv")
+d11 = read.csv("U11.csv")
+d12 = read.csv("U12.csv")
+d13 = read.csv("U13.csv")
+
+# combining
+d = rbind(d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13)
+
+#cleaning irrelevant columns out 
+df = data.frame(d$participant.id_in_session, d$participant.payoff, d$player.id_in_group, d$player.team, d$player.age, d$player.gender, d$player.group_id, d$player.payoff, d$group.amount_offered, d$group.offer_accepted, d$subsession.round_number, d$between_group_play, d$group_number)
+df = df[complete.cases(df),] 
+# gender : 
+# df[df$d.player.gender %in% 'Female','d.player.gender'] <- 'null' 
+df <- df[, -6] 
+
+# data1 
+data1 = data.frame(d$participant.id_in_session, d$participant.payoff, d$player.id_in_group, d$player.team, d$player.age, d$player.gender, d$player.group_id, d$player.payoff, d$group.amount_offered, d$group.offer_accepted, d$subsession.round_number, d$between_group_play, d$group_number)
+
+
+
+```
+
+## Running pipes for preliminary analysis & boxplots for comparison
+# AMOUNT OFFERED 
+```{r}
+library(tidyverse)
+library(dplyr)
+
+# variables should be factors to function in ggplot
+df$d.between_group_play = as.factor(df$d.between_group_play)
+df$d.player.team = as.factor(df$d.player.team)
+
+# trying to get pipes 
+# looking at winning vs losing teams 
+cond_sum = df %>%
+  group_by(d.player.team) %>% 
+   summarise(offered = mean(d.group.amount_offered))
+cond_sum
+# very similar regardless of winning or losing 
+# boxplot
+
+
+p1 <- ggplot(data=df, aes(x = d.player.team, y = d.group.amount_offered)) +
+  geom_boxplot() +
+  labs(title = "Effect of team on amount offered", x = "Winning team = 1, losing team = 2", y = "Amount offered")
+p1
+
+
+# looking at offers between and within groups 
+group_type_sum = df %>%
+  group_by(d.between_group_play == '1') %>% 
+   summarise(offered = mean(d.group.amount_offered))
+group_type_sum
+# here we see a bit more of a difference 
+# boxplot
+p2 <- ggplot(data=df, aes(x = d.between_group_play, y = d.group.amount_offered)) +
+  geom_boxplot() + 
+  labs(title = "Effect of group on amount offered", x = "Between group", y = "Amount offered")
+p2
+
+# looking at group and team effect
+comb_sum = df %>%
+  group_by(d.between_group_play == '1', d.player.team == '1') %>% 
+   summarise(offered = mean(d.group.amount_offered))
+comb_sum
+# boxplot 
+p3 <- ggplot(data=df, aes(x = d.between_group_play=='1', y = d.group.amount_offered, colour = df$d.player.team=='1')) +
+  geom_boxplot() +
+  labs(title = "Effect of team and group on amount offered", x = "Between group", y = "Amount offered", colour = "winning team")
+p3
+# looks like there is a negative effect of within group and loosing
+
+p3a <- ggplot(data=df, aes(x = d.player.team=='1', y = d.group.amount_offered, colour = df$d.between_group_play=='1')) +
+   geom_boxplot() +
+   labs(title = "Effect of team and group on amount offered", x = "Winning team", y = "Amount offered", colour = "between group")
+p3a
+
+####################################################################
+## pipes looking at ACCEPTANCE RATE
+
+# looking at overall acceptance rates 
+sum(data1$d.group.offer_accepted == '1')
+sum(data1$d.group.offer_accepted == '0')
+
+# look at this as a function of the offer 
+
+# winning or losing rate of acceptance 
+team_cond_rate = data1 %>%
+  group_by(d.player.team == '1') %>% 
+   summarise(accept_rate = sum(d.group.offer_accepted == '1'))
+team_cond_rate
+# boxplot
+df$d.between_group_play = as.factor(df$d.between_group_play)
+df$d.player.team = as.factor(df$d.player.team)
+
+p4 <- ggplot(df, aes(d.group.offer_accepted, ..count..)) +
+  geom_bar(aes(fill = sum(d.group.offer_accepted == '1')), position = "dodge")
+  
+ # labs(title = "Effect of group on amount offered", x = "Between group", y = "Amount offered")
+p4
+
+
+# very similar regardless of winning or losing 
+team_cond_rate1 = data1 %>%
+  group_by(d.player.team == '1') %>% 
+   summarise(accept_rate = sum(d.group.offer_accepted == '0'))
+team_cond_rate1
+
+
+# looking at offers between and within groups 
+group_type_rate = data1 %>%
+  group_by(d.between_group_play == '1') %>% 
+   summarise(accept_rate =  sum(d.group.offer_accepted == '1'))
+group_type_rate
+
+group_type_rate1 = data1 %>%
+  group_by(d.between_group_play == '1') %>% 
+   summarise(accept_rate =  sum(d.group.offer_accepted == '0'))
+group_type_rate1
+
+# combining all 
+comb_rate = data1 %>%
+  group_by(d.between_group_play == '1', d.player.team == '1') %>% 
+   summarise(accept_rate = sum(d.group.offer_accepted == '1'))
+comb_rate
+
+comb_rate1 = data1 %>%
+  group_by(d.between_group_play == '1', d.player.team == '1') %>% 
+   summarise(accept_rate = sum(d.group.offer_accepted == '0'))
+comb_rate1
+```
+
+
+
+```{r}
+## MODELZZZZZ 
+
+# amount_offered ~ team_in_group 
+# amount_offered ~ team_out_group 
+# done by id_in_group = 1, and condition team = 1 (in), or 0 (out)
+
+# amount_offered ~ condition + team 
+# amount_offered ~ condition*team 
+
+# acceptance_rate ~ condition 
+# acceptance_rate ~ team 
+# acceptance_rate ~ condition + team 
+# acceptance_rate ~ condition*team 
+
+# Step 1, add column to csv files 
+# Step 2, Merge and load data files,
+# Step 3,  Clean data files 
+# Step 4 - check out the data (see results)
+# step 5 - build bayesian models, see what we can predict 
+
+
+# MONEY OFFERED MODELS 
+# model for amount offered 
+# model for effect of condition (player team) with radom effects of (participant ID (participant_id_in_session), experiment number (group number) & intercept)
+
+######################################################################################################
+# Scaling data for models
+# combining
+d = rbind(d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13)
+
+#cleaning irrelevant columns out 
+df = data.frame(d$participant.id_in_session, d$participant.payoff, d$player.id_in_group, d$player.team, d$player.age, d$player.gender, d$player.group_id, d$player.payoff, d$group.amount_offered, d$group.offer_accepted, d$subsession.round_number, d$between_group_play, d$group_number)
+df = df[complete.cases(df),] 
+# gender : 
+# df[df$d.player.gender %in% 'Female','d.player.gender'] <- 'null' 
+df <- df[, -6] 
+
+#df$d.group.amount_offered = df>[]
+#df$d.player.gender
+
+# we don't want to scale all columns 
+df_1 = data.frame(df$d.participant.id_in_session, df$d.player.id_in_group, df$d.player.team,df$d.player.group_id, df$d.group.offer_accepted, df$d.subsession.round_number, df$d.between_group_play, df$d.group_number)  # add group_number
+df <- df[, -c(1,3,4,6,9,10,11,12)] # add column number for variable group number 
+# standardizing the data (centering and scaling)
+df_s = scale(df, center = TRUE, scale = TRUE)
+df_s = as.data.frame(df_s)
+# new data frame
+df = cbind(df_1, df_s)
+
+#################################################################################################
+```
+
+## Models for amount offered 
+```{r}
+# model 1 - team condition 
+df$df.d.player.team = as.character(df$df.d.player.team)
+df$df.d.player.team[df$df.d.player.team == '1'] = '0'
+df$df.d.player.team[df$df.d.player.team == '2'] = '1'
+df$df.d.player.team = as.numeric(df$df.d.player.team)
+
+
+m1 <- rethinking::map(
+  alist(
+    d.group.amount_offered ~ dnorm( mu , sigma ) , 
+    mu <- ai + aii[df.d.participant.id_in_session] + aiii[df.d.group_number] + aB*df.d.player.team ,
+    ai ~ dnorm(0, 1) , 
+    aii[df.d.participant.id_in_session] ~ dnorm( 0 , 1 ) , 
+    aiii[df.d.group_number] ~ dnorm(0, 1), 
+    aB ~ dnorm( 1 , 0.2) , 
+    sigma ~ dunif( 0 , 3 )
+ ) ,  
+ data = df)
+
+precis(m1)
+plot(precis(m1))
+
+#use logistic in binomial 
+# we can see that 
+
+
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m1))
+
+# model 2 - between group offering 
+m2 <- rethinking::map(
+  alist(
+    d.group.amount_offered ~ dnorm( mu , sigma ) , 
+    mu <- ai + aii[df.d.participant.id_in_session]+ aiii[df.d.group_number] + bB*df.d.between_group_play,
+    ai ~ dnorm(0, 1) , 
+    aii[df.d.participant.id_in_session] ~ dnorm( 0 , 1) , 
+    aiii[df.d.group_number] ~ dnorm(0, 1), 
+    bB ~ dnorm( 1 , 0.2) , 
+    sigma ~ dunif( 0 , 3 )
+ ) ,  
+ data = df)
+
+precis(m2)
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m2))
+
+
+# model 3 with both added together 
+m3 <- rethinking::map(
+  alist(
+    d.group.amount_offered ~ dnorm( mu , sigma ) , 
+    mu <- ai + aii[df.d.participant.id_in_session] + aiii[df.d.group_number] + bA*df.d.player.team + 
+      bB*df.d.between_group_play,
+    ai ~ dnorm(0, 1) , 
+    aii[df.d.participant.id_in_session] ~ dnorm( 0 , 1 ) , 
+    aiii[df.d.group_number] ~ dnorm(0, 1), 
+    bA ~ dnorm( 1 , 0.2) , 
+    bB ~ dnorm(1, 0.2) , 
+    sigma ~ dunif( 0 , 3 )
+ ) ,  
+ data = df)
+
+precis(m3, corr = TRUE)
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m3))
+
+
+# model with interaction of the two 
+m4 <- rethinking::map(
+  alist(
+    d.group.amount_offered ~ dnorm( mu , sigma ) , 
+    mu <- ai + aii[df.d.participant.id_in_session] + aiii[df.d.group_number] + bA*df.d.player.team + bB*df.d.between_group_play + bAB*df.d.player.team*df.d.between_group_play, 
+    ai ~ dnorm(0, 1) , 
+    aii[df.d.participant.id_in_session] ~ dnorm( 0 , 1) , 
+    aiii[df.d.group_number] ~ dnorm(0, 1), 
+    bA ~ dnorm( 1 , 0.2) , 
+    bB ~ dnorm(1, 0.2) ,
+    bAB ~ dnorm(1, 0.2), 
+    sigma ~ dunif( 0 , 3 )
+ ) ,  
+ data = df)
+
+precis(m4, corr = TRUE)
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m4))
+```
+
+## WAIC comparisons of amount offered models 
+```{r}
+# making a WAIC comparison to choose the best model 
+compare(m1, m2, m3, m4)
+
+#beta difference 
+coeftab(m1, m2, m3, m4)
+
+# WAIC plot
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(compare(m1, m2, m3, m4))
+
+
+# coeftab plot 
+plot(coeftab(m1, m2, m3, m4))
+
+```
+
+
+### MODELS GROUP OFFER ACCEPTED 
+# for offer accepted, binomial distirbution with an interaction and look at rate of binomial distribution (is defined a linear model, same as in amount offered) + interaction 
+
+```{r}
+# m5, variable team conidtion 
+#library(rethinking)
+# making data for binomial model 
+df_5 = data.frame(df$df.d.participant.id_in_session, df$df.d.group_number, df$df.d.group.offer_accepted, df$df.d.player.team)
+library(plyr)
+df_5 = rename(df_5, c("df.df.d.participant.id_in_session"="ID", "df.df.d.group_number"="GroupNumber", "df.df.d.group.offer_accepted"="AcceptanceRate", "df.df.d.player.team"="Team"))
+#str(df_5)
+df_5$ID = as.numeric(df_5$ID)
+df_5$GroupNumber = as.numeric(df_5$GroupNumber)
+df_5$AcceptanceRate = as.numeric(df_5$AcceptanceRate)
+df_5$Team = as.numeric(df_5$Team)
+
+df_5$Team= as.character(df_5$Team)
+df_5$Team[df_5$Team == '1'] = '0'
+df_5$Team[df_5$Team == '2'] = '1'
+df_5$Team = as.numeric(df_5$Team)
+
+#model 
+m5 <- rethinking::map2stan( 
+alist(
+  AcceptanceRate ~ dbinom( 1 , p ) , 
+  logit(p) <- ai + aii[ID] + aii[GroupNumber] + bA*Team,
+  ai ~ dnorm(0,1),
+  aii[ID] ~ dnorm(0,1),
+  aiii[GroupNumber] ~ dnorm(0,1), 
+  bA ~ dnorm(0, 0.2),
+  sigma ~ dunif(0,3)
+ ), 
+data=df_5 , chains=2 , cores = 2, iter= 5000 , warmup=2000)
+
+precis(m5)
+plot(precis(m5))
+
+# calculating relative probability 
+logistic(-0.03)
+logistic(c(0.29, 2.09))
+
+logistic(1.22 -0.03)
+logistic(1.22)
+# almost no difference on the absolute scale for changing acceptance rate 
+
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+#pairs(m5)
+plot(precis(m5))
+
+# m6, variable between group play 
+df_6 = data.frame(df$df.d.participant.id_in_session, df$df.d.group_number, df$df.d.group.offer_accepted, df$df.d.between_group_play)
+library(plyr)
+df_6 = rename(df_6, c("df.df.d.participant.id_in_session"="ID", "df.df.d.group_number"="GroupNumber", "df.df.d.group.offer_accepted"="AcceptanceRate", "df.df.d.between_group_play"="BetweenGroup"))
+str(df_6) 
+df_6$ID = as.numeric(df_6$ID)
+df_6$GroupNumber = as.numeric(df_6$GroupNumber)
+df_6$AcceptanceRate = as.numeric(df_6$AcceptanceRate)
+df_6$BetweenGroup = as.numeric(df_6$BetweenGroup)
+
+
+m6 <- map2stan( 
+alist(
+  AcceptanceRate ~ dbinom( 1 , p ) , 
+  logit(p) <- ai + aii[ID] + aiii[GroupNumber] + bB*BetweenGroup,
+  ai ~ dnorm(0,1),
+  aii[ID] ~ dnorm(0,1),
+  aiii[GroupNumber] ~ dnorm(0,1), 
+  bB ~ dnorm(0, 0.2),
+  sigma ~ dunif(0,3)
+ ), 
+data=df_6 , chains=2 , cores = 2, iter= 5000 , warmup=2000)
+
+precis(m6)
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m6))
+plot(m6)
+
+# calculating relative probability 
+logistic(-0.07)
+logistic(c(0.35, 2.10))
+
+logistic(1.25 -0.07)
+logistic(1.25)
+
+# no difference on the absolute scale for changing acceptance rate 
+
+
+# m7, model on between group play + team condition 
+df_7 = data.frame(df$df.d.participant.id_in_session, df$df.d.group_number, df$df.d.group.offer_accepted, df$df.d.between_group_play, df$df.d.player.team)
+#library(plyr)
+df_7 = rename(df_7, c("df.df.d.participant.id_in_session"="ID", "df.df.d.group_number"="GroupNumber", "df.df.d.group.offer_accepted"="AcceptanceRate", "df.df.d.between_group_play"="BetweenGroup", "df.df.d.player.team"="Team"))
+df_7$ID = as.numeric(df_7$ID)
+df_7$GroupNumber = as.numeric(df_7$GroupNumber)
+df_7$AcceptanceRate = as.numeric(df_7$AcceptanceRate)
+df_7$BetweenGroup = as.numeric(df_7$BetweenGroup)
+df_7$Team = as.numeric(df_7$Team)
+
+df_7$Team= as.character(df_7$Team)
+df_7$Team[df_7$Team == '1'] = '0'
+df_7$Team[df_7$Team == '2'] = '1'
+df_7$Team = as.numeric(df_7$Team)
+
+m7 <- map2stan( 
+alist(
+  AcceptanceRate ~ dbinom( 1 , p ) , 
+  logit(p) <- ai + aii[ID] + aiii[GroupNumber] + bB*BetweenGroup + bA*Team,
+  ai ~ dnorm(0,1),
+  aii[ID] ~ dnorm(0,1),
+  aiii[GroupNumber] ~ dnorm(0,1), 
+  bA ~ dnorm(0, 0.2),
+  bB ~ dnorm(0, 0.2),
+  sigma ~ dunif(0,3)
+ ), 
+data=df_7 , chains=2 , cores = 2, iter= 5000 , warmup=2000)
+
+precis(m7, corr = TRUE)
+# devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m7))
+
+# calculating relative probability 
+logistic(-0.03)
+logistic(c(-0.32, 0.27))
+
+logistic(1.25 -0.03)
+logistic(1.25)
+
+logistic(-0.07)
+logistic(c(-0.38, 0.22))
+
+logistic(1.25 -0.07)
+logistic(1.25)
+# no difference on the absolute scale for changing acceptance rate 
+
+# m8, model on between group play*team condition 
+df_8 = data.frame(df$df.d.participant.id_in_session, df$df.d.group_number, df$df.d.group.offer_accepted, df$df.d.between_group_play, df$df.d.player.team)
+#library(plyr)
+df_8 = rename(df_8, c("df.df.d.participant.id_in_session"="ID", "df.df.d.group_number"="GroupNumber", "df.df.d.group.offer_accepted"="AcceptanceRate", "df.df.d.between_group_play"="BetweenGroup", "df.df.d.player.team"="Team"))
+df_8$ID = as.numeric(df_8$ID)
+df_8$GroupNumber = as.numeric(df_8$GroupNumber)
+df_8$AcceptanceRate = as.numeric(df_8$AcceptanceRate)
+df_8$BetweenGroup = as.numeric(df_8$BetweenGroup)
+df_8$Team = as.numeric(df_8$Team)
+
+df_8$Team= as.character(df_8$Team)
+df_8$Team[df_8$Team == '1'] = '0'
+df_8$Team[df_8$Team == '2'] = '1'
+df_8$Team = as.numeric(df_8$Team)
+
+
+m8 <- map2stan( 
+alist(
+  AcceptanceRate ~ dbinom( 1 , p ) , 
+  logit(p) <- ai + aii[ID] + aiii[GroupNumber] + bB*BetweenGroup + bA*Team + bR*Team*BetweenGroup,
+  ai ~ dnorm(0,1),
+  aii[ID] ~ dnorm(0,1),
+  aiii[GroupNumber] ~ dnorm(0,1), 
+  bA ~ dnorm(0, 0.2),
+  bB ~ dnorm(0, 0.2),
+  bR ~ dnorm(0, 0.2),
+  sigma ~ dunif(0,3)
+ ), 
+data=df_8 , chains=2 , cores = 2, iter= 5000 , warmup=2000)
+
+precis(m8)
+precis(m8, depth = 2)
+# devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m8))
+# calculating relative probability 
+logistic(-0.03)
+logistic(c(-0.32, 0.28))
+
+logistic(1.26 -0.03)
+logistic(1.25)
+
+logistic(-0.06)
+logistic(c(-0.36, 0.24))
+
+logistic(1.26 -0.07)
+logistic(1.26)
+
+logistic(-0.01)
+logistic(c(-0.30, 0.30))
+
+logistic(1.26 -0.01)
+logistic(1.26)
+
+# no difference on the absolute scale for changing acceptance rate 
+
+```
+
+## WAIC comparisons for Acceptance Rate models 
+```{r}
+# making a WAIC comparison to choose the best model 
+compare(m5, m6, m7, m8)
+
+#beta difference 
+coeftab(m5, m6, m7, m8)
+
+# WAIC plot
+plot(compare(m5, m6, m7, m8))
+
+# coeftab plot 
+plot(coeftab(m5, m6, m7, m8))
+
+```
+
+
+
+## PLOTS FOR BEST AMOUNT OFFERED MODEL 
+# Posterior predicitive plots 
+
+
+```{r pressure, echo=FALSE}
+############
+
+#plotting likelihood
+
+dens(rnorm( 10000, 0, 0.2))
+
+# best of the models run predicted posterior and compare 
+
+
+
+```
+
+## Predicitve Posterior Plots for Best Amount offered model 
+```{r}
+
+m1 <- rethinking::map(
+  alist(
+    d.group.amount_offered ~ dnorm( mu , sigma ) , 
+    mu <- ai + a[df.d.participant.id_in_session] + ab[df.d.group_number] + aB*df.d.player.team ,
+    ai ~ dnorm(0, 1) , 
+    a[df.d.participant.id_in_session] ~ dnorm( 0 , 1 ) , 
+    ab[df.d.group_number] ~ dnorm(0, 1), 
+    aB ~ dnorm( 1 , 0.2) , 
+    sigma ~ dunif( 0 , 3 )
+ ) ,  
+ data = df)
+
+precis(m1)
+devtools::install_github("rmcelreath/rethinking", force = TRUE)
+plot(precis(m1))
+
+# Plot observations against predictions 
+mu <- link(m1, na.rm = TRUE)
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+model.sim <- sim( m1 , n=1000, na.rm = TRUE )
+model.PI <- apply( model.sim , 2 , PI  )
+
+# plot predictions against observed 
+plot( mu.mean ~ df$d.group.amount_offered, col=rangi2 , ylim=range(mu.PI) ,
+    xlab="Observed amount offered" , ylab="Predicted amount offered" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(df) )
+    lines( rep(df$d.group.amount_offered[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+        col=rangi2 )
+
+########
+
+#extracting samples from the posterior
+post.samples=extract.samples(m1)
+
+#plotting with the uncertainty
+#just to check if the model makes sense
+plot( d.group.amount_offered ~ df.d.player.team , df)
+abline(a=coef(m1)['ai'], b=coef(m1)['aB'])
+for ( i in 1:100 )
+abline( a=post.samples$ai[i] , b=post.samples$aB[i] , col=col.alpha(rangi2, 0.5) )
+
+###################################
+# Can't make other plots with random effects in our model, so we have left them out 
+
+
+####################################################
+
+
+
+
+```
+
+
+## PLOTS FOR ACCEPTANCE RATE MODELS 
+```{r}
+m6 <- map2stan( 
+alist(
+  AcceptanceRate ~ dbinom( 26 , p ) , 
+  logit(p) <- ai + aii[ID] + aiii[GroupNumber] + bB*BetweenGroup,
+  ai ~ dnorm(0,1),
+  aii[ID] ~ dnorm(0,1),
+  aiii[GroupNumber] ~ dnorm(0,1), 
+  bB ~ dnorm(0, 0.2),
+  sigma ~ dunif(0,3)
+ ), 
+data=df_6 , chains=2 , cores = 2, iter= 5000 , warmup=2000)
+
+# extract Stan samples
+post <- extract.samples(m6)
+# Plot observations against predictions 
+mu <- link(m6, na.rm = TRUE)
+# summarize samples across cases
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI )
+# simulate observations
+# again no new data, so uses original data
+model.sim <- sim( m6 , n=1000, na.rm = TRUE )
+model.PI <- apply( model.sim , 2 , PI  )
+
+# plot predictions against observed 
+plot( mu.mean ~ df_6$AcceptanceRate, col=rangi2 , ylim=range(mu.PI) ,
+    xlab="Observed acceptance rate" , ylab="Predicted acceptance rate" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(df_6) )
+    lines( rep(df_6$AcceptanceRate[i],2) , c(mu.PI[1,i],mu.PI[2,i]) ,
+        col=rangi2 )
+
+#extracting samples from the posterior
+post.samples=extract.samples(m6)
+
+#plotting with the uncertainty
+#just to check if the model makes sense
+plot( AcceptanceRate ~ BetweenGroup, df_6)
+abline(a=coef(m6)['ai'], b=coef(m6)['bB'])
+for ( i in 1:nrow(df_6) )
+abline( a=post.samples$ai[i] , b=post.samples$bB[i] , col=col.alpha(rangi2, 0.5) )
+
+
+
+
+# will use by() here; see Overthinking box for explanation
+link.m6 <- link( m6 , data=df_6 )
+pred.p <- apply( link.m6 , 2 , mean )
+pred.p.PI <- apply( link.m6 , 2 , PI )
+plot( 0 , 0 , type="n" , xlab="between group" ,
+ylab="acceptance rate " , ylim=c(0,10) , xaxt="n" ,
+xlim=c(1,2) , yaxp=c(0,1,2) )
+axis( 1 , at=1:4 , labels=c("0/0","1/0","0/1","1/1") )
+mtext( paste( "participant" , df_6$ID ) )
+p <- by( df_6$AcceptanceRate ,
+list(df_6$BetweenGroup) , mean )
+lines( 1:4  , col=rangi2 , lwd=2 )
+
+######################################################################################
+library(rethinking)
+df_6 = as.data.frame(df_6)
+
+post <- extract.samples( m6 ) 
+post.samples = as.data.frame(post.samples)
+p.acceptance_rate <- logistic( post$ai + post$bB )
+quantile(c(0.025,0.5,0.975) )
+
+for ( i in 1:4 ) {
+x <- df_6$BetweenGroup
+y1 <- df_6$AcceptanceRate[x]
+y2 <- post$AcceptanceRate[x]
+lines( x, y1, col=rangi2 , lwd=2 )
+text( x+0.5 , (y1+y2)/2 + 0.05 , d$dept[x] , cex=0.8 , col=rangi2 )
+}
+
+qplot(p.acceptance_rate)
+
+str(df_6)
+df_6$ID = as.factor(df_6$ID)
+df_6$AcceptanceRate = as.factor(df_6$AcceptanceRate)
+df_6$BetweenGroup = as.factor(df_6$BetweenGroup)
+
+
+ggplot(df_6, aes(ID, AcceptanceRate, colour = BetweenGroup)) + geom_boxplot()
+
+
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
